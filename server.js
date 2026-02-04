@@ -6,11 +6,13 @@ const session = require('express-session');
 
 const Invoice = require('./models/Invoice');
 const Admin = require('./models/Admin');
+const FundRequest = require('./models/FundRequest');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/beta_tester';
 const API_URL = process.env.API_URL || 'https://httpbin.org/post';
+const PAYMENT_URL = process.env.PAYMENT_URL || 'http://localhost:51634/';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'change-me-in-production';
 
 mongoose.connect(MONGODB_URI).catch((err) => {
@@ -22,7 +24,12 @@ app.use(session({
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, httpOnly: true, maxAge: 24 * 60 * 60 * 1000 },
+  rolling: true,
+  cookie: {
+    secure: false,
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000,
+  },
 }));
 
 const requireAdmin = (req, res, next) => {
@@ -33,8 +40,41 @@ const requireAdmin = (req, res, next) => {
   return res.redirect('/admin/login');
 };
 
+app.get('/api/config', (req, res) => {
+  res.json({ paymentUrl: PAYMENT_URL });
+});
+
+// Get current Solana price from CoinGecko
+app.get('/api/solana-price', async (req, res) => {
+  try {
+    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+    const data = await response.json();
+
+    if (data && data.solana && data.solana.usd) {
+      res.json({
+        success: true,
+        price: data.solana.usd,
+        timestamp: Date.now()
+      });
+    } else {
+      throw new Error('Invalid response from CoinGecko');
+    }
+  } catch (err) {
+    console.error('Solana price fetch error:', err.message);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch Solana price',
+      fallbackPrice: 100 // Fallback price in case of error
+    });
+  }
+});
+
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.redirect("/fund-request");
+});
+
+app.get('/fund-request', (req, res) => {
+  res.sendFile(path.join(__dirname, 'fundRequest.html'));
 });
 
 app.get('/admin/login', (req, res) => {
@@ -101,6 +141,29 @@ app.get('/api/admin/invoices', requireAdmin, async (req, res) => {
     res.json({ success: true, data: invoices });
   } catch (err) {
     console.error('List invoices error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/payment', (req, res) => {
+  res.sendFile(path.join(__dirname, 'payment.html'));
+});
+
+app.get('/fund-request-payment', (req, res) => {
+  res.sendFile(path.join(__dirname, 'fundRequestPayment.html'));
+});
+
+app.get('/api/invoice/by-number/:invoiceNumber', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  next();
+}, async (req, res) => {
+  try {
+    const invoice = await Invoice.findOne({ invoiceNumber: req.params.invoiceNumber }).lean();
+    if (!invoice) {
+      return res.status(404).json({ success: false, error: 'Invoice not found' });
+    }
+    res.json({ success: true, data: invoice });
+  } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -174,6 +237,124 @@ app.post('/api/invoice', async (req, res) => {
       success: false,
       error: err.message,
     });
+  }
+});
+
+// Fund Request endpoints
+app.post('/api/fund-request', async (req, res) => {
+  try {
+    const { fullName, xProfile, discord, telegram } = req.body;
+
+    if (!fullName || !xProfile || !discord || !telegram) {
+      return res.status(400).json({ success: false, error: 'All fields are required' });
+    }
+
+    const fundRequestNumber = String(Math.floor(Math.random() * 90000000) + 10000000);
+
+    // Fetch current SOL price from CoinGecko
+    const solAmount = 0.5;
+    let usdPrice = solAmount * 100; // Fallback price
+
+    try {
+      const priceResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+      const priceData = await priceResponse.json();
+      if (priceData && priceData.solana && priceData.solana.usd) {
+        usdPrice = solAmount * priceData.solana.usd;
+      }
+    } catch (priceErr) {
+      console.error('Failed to fetch SOL price for fund request:', priceErr.message);
+      // Continue with fallback price
+    }
+
+    const fundRequest = new FundRequest({
+      fundRequestNumber,
+      fullName,
+      xProfile,
+      discord,
+      telegram,
+      solAmount,
+      usdPrice,
+    });
+
+    await fundRequest.save();
+
+    const payload = fundRequest.toObject();
+    delete payload.__v;
+
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    const statusOk = response.ok;
+
+    res.status(statusOk ? 200 : response.status).json({
+      success: true,
+      data: payload,
+      apiResponse: data,
+    });
+  } catch (err) {
+    console.error('Fund request API error:', err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+app.get('/api/fund-request/:id', async (req, res) => {
+  try {
+    const fundRequest = await FundRequest.findById(req.params.id).lean();
+    if (!fundRequest) {
+      return res.status(404).json({ success: false, error: 'Fund request not found' });
+    }
+    res.json({ success: true, data: fundRequest });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/fund-request/by-number/:fundRequestNumber', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  next();
+}, async (req, res) => {
+  try {
+    const fundRequest = await FundRequest.findOne({ fundRequestNumber: req.params.fundRequestNumber }).lean();
+    if (!fundRequest) {
+      return res.status(404).json({ success: false, error: 'Fund request not found' });
+    }
+    res.json({ success: true, data: fundRequest });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/admin/fund-requests', requireAdmin, async (req, res) => {
+  try {
+    const fundRequests = await FundRequest.find().sort({ createdAt: -1 }).lean();
+    res.json({ success: true, data: fundRequests });
+  } catch (err) {
+    console.error('List fund requests error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.patch('/api/admin/fund-requests/:id/confirm', requireAdmin, async (req, res) => {
+  try {
+    const fundRequest = await FundRequest.findByIdAndUpdate(
+      req.params.id,
+      { confirmedByAdmin: true },
+      { new: true }
+    ).lean();
+    if (!fundRequest) {
+      return res.status(404).json({ success: false, error: 'Fund request not found' });
+    }
+    res.json({ success: true, data: fundRequest });
+  } catch (err) {
+    console.error('Confirm fund request error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

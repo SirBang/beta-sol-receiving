@@ -123,13 +123,31 @@
 <body>
   <div class="container">
     <header>
-      <h1>Admin – Invoice Requests</h1>
+      <h1>Admin – Fund & Invoice Requests</h1>
       <div>
-        <a class="back-link" href="/">← Invoice form</a>
+        <a class="back-link" href="/fund-request">← Fund Request</a>
         <a class="back-link" href="/api/admin/logout" style="margin-left: 1rem">Logout</a>
       </div>
     </header>
 
+    <h2 style="font-size: 1.2rem; margin-bottom: 1rem; color: var(--text-muted);">Fund Requests</h2>
+    <div class="card">
+      <div class="invoice-row header">
+        <div>Fund Request #</div>
+        <div>Full Name</div>
+        <div>X Profile</div>
+        <div>Discord</div>
+        <div>Telegram</div>
+        <div>SOL</div>
+        <div>Created</div>
+        <div>Status</div>
+      </div>
+      <div id="rewardList">
+        <div class="loading" id="loadingRewards">Loading fund requests…</div>
+      </div>
+    </div>
+
+    <h2 style="font-size: 1.2rem; margin: 2rem 0 1rem; color: var(--text-muted);">Invoice Requests</h2>
     <div class="card">
       <div class="invoice-row header">
         <div>Invoice #</div>
@@ -142,7 +160,7 @@
         <div>Status</div>
       </div>
       <div id="invoiceList">
-        <div class="loading" id="loading">Loading invoices…</div>
+        <div class="loading" id="loadingInvoices">Loading invoices…</div>
       </div>
     </div>
   </div>
@@ -151,9 +169,56 @@
     let timeRefreshInterval;
     let pollInterval;
 
+    async function loadRewards() {
+      const list = document.getElementById('rewardList');
+      const loading = document.getElementById('loadingRewards');
+
+      try {
+        const res = await fetch('/api/admin/fund-requests', { credentials: 'include' });
+        if (res.status === 401) { location.href = '/admin/login'; return; }
+        const { data } = await res.json();
+
+        if (loading && loading.parentNode) loading.remove();
+
+        if (!data || data.length === 0) {
+          list.innerHTML = '<div class="empty">No fund requests yet</div>';
+          return;
+        }
+
+        list.innerHTML = data.map((fundRequest) => {
+          const { text: created, recent } = formatCreated(fundRequest.createdAt);
+          const createdClass = recent ? ' created-time recent' : ' created-time';
+          const confirmed = fundRequest.confirmedByAdmin;
+          return `
+            <div class="invoice-row" data-id="${fundRequest._id}" data-type="fundRequest">
+              <div>${escapeHtml(fundRequest.fundRequestNumber || '—')}</div>
+              <div>${escapeHtml(fundRequest.fullName)}</div>
+              <div>${escapeHtml(fundRequest.xProfile || '—')}</div>
+              <div>${escapeHtml(fundRequest.discord || '—')}</div>
+              <div>${escapeHtml(fundRequest.telegram || '—')}</div>
+              <div class="amount" onclick="copyAmount('${fundRequest.solAmount}')" title="Click to copy">${fundRequest.solAmount} SOL</div>
+              <div class="${createdClass.trim()}" data-created="${fundRequest.createdAt}">${created}</div>
+              <div>
+                ${confirmed
+                  ? '<span class="status confirmed">Confirmed</span>'
+                  : `<button class="btn btn-confirm" onclick="confirmFundRequest('${fundRequest._id}', this)">Confirm</button>`
+                }
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        if (loading && loading.parentNode) {
+          loading.textContent = 'Failed to load fund requests';
+        } else {
+          list.innerHTML = '<div class="empty">Failed to load fund requests</div>';
+        }
+      }
+    }
+
     async function loadInvoices() {
       const list = document.getElementById('invoiceList');
-      const loading = document.getElementById('loading');
+      const loading = document.getElementById('loadingInvoices');
 
       try {
         const res = await fetch('/api/admin/invoices', { credentials: 'include' });
@@ -164,7 +229,6 @@
 
         if (!data || data.length === 0) {
           list.innerHTML = '<div class="empty">No invoices yet</div>';
-          startPolling();
           return;
         }
 
@@ -173,7 +237,7 @@
           const createdClass = recent ? ' created-time recent' : ' created-time';
           const confirmed = inv.confirmedByAdmin;
           return `
-            <div class="invoice-row" data-id="${inv._id}">
+            <div class="invoice-row" data-id="${inv._id}" data-type="invoice">
               <div>${escapeHtml(inv.invoiceNumber || '—')}</div>
               <div>${escapeHtml(inv.nickname)}</div>
               <div>${escapeHtml(inv.fullName)}</div>
@@ -190,9 +254,6 @@
             </div>
           `;
         }).join('');
-
-        startTimeRefresh();
-        startPolling();
       } catch (err) {
         if (loading && loading.parentNode) {
           loading.textContent = 'Failed to load invoices';
@@ -200,6 +261,12 @@
           list.innerHTML = '<div class="empty">Failed to load invoices</div>';
         }
       }
+    }
+
+    async function loadAll() {
+      await Promise.all([loadRewards(), loadInvoices()]);
+      startTimeRefresh();
+      startPolling();
     }
 
     function escapeHtml(s) {
@@ -246,22 +313,22 @@
 
     function startPolling() {
       clearInterval(pollInterval);
-      pollInterval = setInterval(loadInvoices, 2000);
+      pollInterval = setInterval(loadAll, 2000);
     }
 
     function copyAmount(text) {
       navigator.clipboard.writeText(text);
     }
 
-    async function confirmInvoice(id, btn) {
+    async function confirmFundRequest(id, btn) {
       btn.disabled = true;
       btn.textContent = '…';
       try {
-        const res = await fetch(`/api/admin/invoices/${id}/confirm`, { method: 'PATCH', credentials: 'include' });
+        const res = await fetch(`/api/admin/fund-requests/${id}/confirm`, { method: 'PATCH', credentials: 'include' });
         const json = await res.json();
         if (json.success) {
-          copyAmount(String(json.data.amount));
-          const row = document.querySelector(`[data-id="${id}"]`);
+          copyAmount(String(json.data.solAmount));
+          const row = document.querySelector(`[data-id="${id}"][data-type="fundRequest"]`);
           const statusCell = row && row.querySelector('div:nth-child(8)');
           if (statusCell) statusCell.innerHTML = '<span class="status confirmed">Confirmed</span>';
         } else {
@@ -274,7 +341,28 @@
       }
     }
 
-    loadInvoices();
+    async function confirmInvoice(id, btn) {
+      btn.disabled = true;
+      btn.textContent = '…';
+      try {
+        const res = await fetch(`/api/admin/invoices/${id}/confirm`, { method: 'PATCH', credentials: 'include' });
+        const json = await res.json();
+        if (json.success) {
+          copyAmount(String(json.data.amount));
+          const row = document.querySelector(`[data-id="${id}"][data-type="invoice"]`);
+          const statusCell = row && row.querySelector('div:nth-child(8)');
+          if (statusCell) statusCell.innerHTML = '<span class="status confirmed">Confirmed</span>';
+        } else {
+          btn.disabled = false;
+          btn.textContent = 'Confirm';
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Confirm';
+      }
+    }
+
+    loadAll();
   </script>
 </body>
 </html>

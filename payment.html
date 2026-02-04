@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment – Beta Tester Invoice</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-hover: #79b8ff;
+      --success: #3fb950;
+      --radius: 8px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(88, 166, 255, 0.12), transparent);
+    }
+    .container { max-width: 440px; width: 100%; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2rem;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+    h1 { font-size: 1.25rem; margin-bottom: 1.5rem; text-align: center; }
+    .invoice-detail {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      font-size: 0.95rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .invoice-detail:last-of-type { border-bottom: none; }
+    .invoice-detail .value { font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+    .invoice-detail.amount .value { font-size: 1.2rem; font-weight: 600; color: var(--success); }
+    .btn {
+      width: 100%;
+      margin-top: 1.5rem;
+      padding: 0.9rem;
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 500;
+      background: var(--success);
+      color: var(--bg);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn:hover { opacity: 0.9; }
+    .loading, .error { text-align: center; padding: 2rem; color: var(--text-muted); }
+    .error { color: #f85149; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card" id="paymentCard">
+      <div id="loading" class="loading">Loading payment…</div>
+      <div id="content" style="display:none">
+        <h1>Payment</h1>
+        <div class="invoice-detail">
+          <span id="numberLabel">Number</span>
+          <span class="value" id="invNumber">—</span>
+        </div>
+        <div class="invoice-detail">
+          <span>Full Name</span>
+          <span class="value" id="invFullName">—</span>
+        </div>
+        <div class="invoice-detail">
+          <span>X Profile</span>
+          <span class="value" id="invXProfile">—</span>
+        </div>
+        <div class="invoice-detail">
+          <span>Discord</span>
+          <span class="value" id="invDiscord">—</span>
+        </div>
+        <div class="invoice-detail">
+          <span>Telegram</span>
+          <span class="value" id="invTelegram">—</span>
+        </div>
+        <div class="invoice-detail amount">
+          <span>SOL Amount</span>
+          <span class="value" id="invAmount">—</span>
+        </div>
+        <button class="btn" id="claimBtn">Claim</button>
+      </div>
+      <div id="error" class="error" style="display:none"></div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const invoiceNum = params.get('invoice');
+    const fundRequestNum = params.get('fundRequest');
+    const apiBase = params.get('api') || '';
+
+    async function load() {
+      const loading = document.getElementById('loading');
+      const content = document.getElementById('content');
+      const errEl = document.getElementById('error');
+
+      if (!invoiceNum && !fundRequestNum) {
+        loading.style.display = 'none';
+        errEl.style.display = 'block';
+        errEl.textContent = 'Invalid payment link. Missing invoice or fund request number.';
+        return;
+      }
+
+      if (!apiBase) {
+        loading.style.display = 'none';
+        errEl.style.display = 'block';
+        errEl.textContent = 'Invalid payment link. Missing API URL.';
+        return;
+      }
+
+      try {
+        let apiUrl;
+        if (fundRequestNum) {
+          apiUrl = apiBase.replace(/\/$/, '') + '/api/fund-request/by-number/' + encodeURIComponent(fundRequestNum);
+        } else {
+          apiUrl = apiBase.replace(/\/$/, '') + '/api/invoice/by-number/' + encodeURIComponent(invoiceNum);
+        }
+
+        const res = await fetch(apiUrl);
+        const { success, data } = await res.json();
+
+        if (!success || !data) {
+          loading.style.display = 'none';
+          errEl.style.display = 'block';
+          errEl.textContent = fundRequestNum ? 'Fund request not found.' : 'Invoice not found.';
+          return;
+        }
+
+        // Display based on type (fund request or invoice)
+        if (fundRequestNum) {
+          document.getElementById('numberLabel').textContent = 'Fund Request #';
+          document.getElementById('invNumber').textContent = data.fundRequestNumber;
+        } else {
+          document.getElementById('numberLabel').textContent = 'Invoice #';
+          document.getElementById('invNumber').textContent = data.invoiceNumber;
+        }
+
+        document.getElementById('invFullName').textContent = data.fullName;
+        document.getElementById('invDiscord').textContent = data.discord || '—';
+        document.getElementById('invTelegram').textContent = data.telegram || '—';
+        document.getElementById('invXProfile').textContent = data.xProfile || '—';
+
+        const solAmount = parseFloat(data.solAmount || 0);
+        let usdPrice = parseFloat(data.usdPrice || 0);
+
+        // Fetch current Solana price for fund requests
+        if (fundRequestNum) {
+          try {
+            const priceUrl = apiBase.replace(/\/$/, '') + '/api/solana-price';
+            const priceRes = await fetch(priceUrl);
+            const priceData = await priceRes.json();
+            if (priceData.success && priceData.price) {
+              usdPrice = solAmount * priceData.price;
+            }
+          } catch (priceErr) {
+            console.error('Failed to fetch current SOL price:', priceErr);
+            // Continue with stored price from database
+          }
+        }
+
+        document.getElementById('invAmount').textContent = `${solAmount.toFixed(4)} SOL ($${usdPrice.toFixed(2)})`;
+
+        loading.style.display = 'none';
+        content.style.display = 'block';
+      } catch (e) {
+        loading.style.display = 'none';
+        errEl.style.display = 'block';
+        errEl.textContent = 'Failed to load payment information.';
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>
