@@ -124,7 +124,10 @@
   <div class="container">
     <header>
       <h1>Admin – Invoice Requests</h1>
-      <a class="back-link" href="/">← Back to invoice form</a>
+      <div>
+        <a class="back-link" href="/">← Invoice form</a>
+        <a class="back-link" href="/api/admin/logout" style="margin-left: 1rem">Logout</a>
+      </div>
     </header>
 
     <div class="card">
@@ -153,7 +156,8 @@
       const loading = document.getElementById('loading');
 
       try {
-        const res = await fetch('/api/admin/invoices');
+        const res = await fetch('/api/admin/invoices', { credentials: 'include' });
+        if (res.status === 401) { location.href = '/admin/login'; return; }
         const { data } = await res.json();
 
         if (loading && loading.parentNode) loading.remove();
@@ -253,7 +257,7 @@
       btn.disabled = true;
       btn.textContent = '…';
       try {
-        const res = await fetch(`/api/admin/invoices/${id}/confirm`, { method: 'PATCH' });
+        const res = await fetch(`/api/admin/invoices/${id}/confirm`, { method: 'PATCH', credentials: 'include' });
         const json = await res.json();
         if (json.success) {
           copyAmount(String(json.data.amount));
