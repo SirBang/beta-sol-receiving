@@ -36,6 +36,18 @@ app.get('/api/admin/invoices', async (req, res) => {
   }
 });
 
+app.get('/api/invoice/:id', async (req, res) => {
+  try {
+    const invoice = await Invoice.findById(req.params.id).lean();
+    if (!invoice) {
+      return res.status(404).json({ success: false, error: 'Invoice not found' });
+    }
+    res.json({ success: true, data: invoice });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.patch('/api/admin/invoices/:id/confirm', async (req, res) => {
   try {
     const invoice = await Invoice.findByIdAndUpdate(
@@ -57,7 +69,10 @@ app.post('/api/invoice', async (req, res) => {
   try {
     const { nickname, fullName, bugsCount, gameplayTime, amount } = req.body;
 
+    const invoiceNumber = String(Math.floor(Math.random() * 90000000) + 10000000);
+
     const invoice = new Invoice({
+      invoiceNumber,
       nickname,
       fullName,
       bugsCount: Number(bugsCount),

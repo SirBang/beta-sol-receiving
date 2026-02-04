@@ -63,7 +63,7 @@
 
     .invoice-row {
       display: grid;
-      grid-template-columns: 1fr 1fr 80px 80px 100px 110px 120px;
+      grid-template-columns: 100px 1fr 1fr 80px 80px 100px 110px 120px;
       gap: 1rem;
       align-items: center;
       padding: 1rem 1.25rem;
@@ -129,6 +129,7 @@
 
     <div class="card">
       <div class="invoice-row header">
+        <div>Invoice #</div>
         <div>Nickname</div>
         <div>Full Name</div>
         <div>Bugs</div>
@@ -169,6 +170,7 @@
           const confirmed = inv.confirmedByAdmin;
           return `
             <div class="invoice-row" data-id="${inv._id}">
+              <div>${escapeHtml(inv.invoiceNumber || '—')}</div>
               <div>${escapeHtml(inv.nickname)}</div>
               <div>${escapeHtml(inv.fullName)}</div>
               <div>${inv.bugsCount}</div>
@@ -256,7 +258,7 @@
         if (json.success) {
           copyAmount(String(json.data.amount));
           const row = document.querySelector(`[data-id="${id}"]`);
-          const statusCell = row && row.querySelector('div:nth-child(7)');
+          const statusCell = row && row.querySelector('div:nth-child(8)');
           if (statusCell) statusCell.innerHTML = '<span class="status confirmed">Confirmed</span>';
         } else {
           btn.disabled = false;

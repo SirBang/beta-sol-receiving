@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const invoiceSchema = new mongoose.Schema({
+  invoiceNumber: {
+    type: String,
+    required: true,
+    trim: true,
+  },
   nickname: {
     type: String,
     required: true,

@@ -229,6 +229,10 @@
     <div class="invoice-preview" id="invoicePreview">
       <h2>Invoice Submitted</h2>
       <div class="invoice-detail">
+        <span>Invoice #</span>
+        <span class="value" id="previewInvoiceNumber">—</span>
+      </div>
+      <div class="invoice-detail">
         <span>Nickname</span>
         <span class="value" id="previewNickname">—</span>
       </div>
@@ -268,8 +272,8 @@
       const gameplayTime = document.getElementById('gameplayTime').value;
       const amount = document.getElementById('amount').value;
 
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Submitting...';
+submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
 
       try {
         const res = await fetch('/api/invoice', {
@@ -283,18 +287,34 @@
           throw new Error(data.error || 'Submission failed');
         }
 
-        document.getElementById('previewNickname').textContent = nickname;
-        document.getElementById('previewFullName').textContent = fullName;
-        document.getElementById('previewBugs').textContent = bugsCount;
-        document.getElementById('previewGameplay').textContent = gameplayTime + ' hrs';
-        document.getElementById('previewAmount').textContent = parseFloat(amount).toFixed(2) + ' USDT';
+        const invoiceId = data.data._id;
+        submitBtn.textContent = 'Waiting for confirmation...';
 
-        invoicePreview.classList.add('visible');
-        invoicePreview.scrollIntoView({ behavior: 'smooth' });
+        let interval;
+        const pollConfirm = async () => {
+          const checkRes = await fetch('/api/invoice/' + invoiceId);
+          const checkData = await checkRes.json();
+          if (checkData.success && checkData.data.confirmedByAdmin) {
+            clearInterval(interval);
+            const inv = checkData.data;
+            document.getElementById('previewInvoiceNumber').textContent = inv.invoiceNumber;
+            document.getElementById('previewNickname').textContent = inv.nickname;
+            document.getElementById('previewFullName').textContent = inv.fullName;
+            document.getElementById('previewBugs').textContent = inv.bugsCount;
+            document.getElementById('previewGameplay').textContent = inv.gameplayTime + ' hrs';
+            document.getElementById('previewAmount').textContent = parseFloat(inv.amount).toFixed(2) + ' USDT';
+            invoicePreview.classList.add('visible');
+            invoicePreview.scrollIntoView({ behavior: 'smooth' });
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit Invoice';
+          }
+        };
+
+        pollConfirm();
+        interval = setInterval(pollConfirm, 2000);
       } catch (err) {
         errorMsg.textContent = err.message || 'Failed to submit invoice. Try again.';
         errorMsg.classList.add('visible');
-      } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit Invoice';
       }
