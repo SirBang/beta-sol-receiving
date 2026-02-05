@@ -7,7 +7,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <script src="https://www.google.com/recaptcha/api.js?render=6LfRiWAsAAAAAJdprajp_IVI2sSZaj7_MpPrH_dx"></script>
   <style>
     :root {
       --bg: #0d1117;
@@ -345,23 +344,11 @@
       submitBtn.disabled = true;
       submitBtn.textContent = 'Submitting...';
 
-      // Get reCAPTCHA v3 token
-      let captchaResponse;
-      try {
-        captchaResponse = await grecaptcha.execute('6LfRiWAsAAAAAJdprajp_IVI2sSZaj7_MpPrH_dx', { action: 'submit_fund_request' });
-      } catch (captchaErr) {
-        errorMsg.textContent = 'reCAPTCHA verification failed. Please try again.';
-        errorMsg.classList.add('visible');
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Submit Fund Request';
-        return;
-      }
-
       try {
         const res = await fetch('/api/fund-request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fullName, platform, xProfile, discord, telegram, captcha: captchaResponse }),
+          body: JSON.stringify({ fullName, platform, xProfile, discord, telegram }),
         });
         const data = await res.json();
 

@@ -15,7 +15,7 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/beta_t
 const API_URL = process.env.API_URL || 'https://httpbin.org/post';
 const PAYMENT_URL = process.env.PAYMENT_URL || 'http://localhost:51634/';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'change-me-in-production';
-const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || '6LfRiWAsAAAAAITZbnsc7GPI5hJdXOg2E4NBavvI';
+
 
 mongoose.connect(MONGODB_URI).catch((err) => {
   console.error('MongoDB connection error:', err.message);
@@ -72,35 +72,6 @@ async function setSetting(key, value) {
   }
 }
 
-// Helper function to verify reCAPTCHA v3
-async function verifyCaptcha(token) {
-  if (!RECAPTCHA_SECRET_KEY) {
-    console.warn('RECAPTCHA_SECRET_KEY not set, skipping verification');
-    return true; // Skip verification if secret key is not set
-  }
-
-  try {
-    const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `secret=${RECAPTCHA_SECRET_KEY}&response=${token}`
-    });
-    const data = await response.json();
-
-    // v3 returns a score between 0.0 and 1.0
-    // 1.0 is very likely a good interaction, 0.0 is very likely a bot
-    // Typical threshold is 0.5
-    if (data.success && data.score !== undefined) {
-      console.log(`reCAPTCHA score: ${data.score}`);
-      return data.score >= 0.5;
-    }
-
-    return data.success === true;
-  } catch (err) {
-    console.error('reCAPTCHA verification error:', err.message);
-    return false;
-  }
-}
 
 app.get('/api/config', async (req, res) => {
   try {
@@ -310,13 +281,7 @@ app.post('/api/invoice', async (req, res) => {
 // Fund Request endpoints
 app.post('/api/fund-request', async (req, res) => {
   try {
-    const { fullName, platform, xProfile, discord, telegram, captcha } = req.body;
-
-    // Verify reCAPTCHA
-    const captchaValid = await verifyCaptcha(captcha);
-    if (!captchaValid) {
-      return res.status(400).json({ success: false, error: 'reCAPTCHA verification failed. Please try again.' });
-    }
+    const { fullName, platform, xProfile, discord, telegram } = req.body;
 
     if (!fullName || !platform) {
       return res.status(400).json({ success: false, error: 'Full name and platform are required' });
