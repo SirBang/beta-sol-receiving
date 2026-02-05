@@ -84,6 +84,10 @@
           <span class="value" id="invFullName">—</span>
         </div>
         <div class="invoice-detail">
+          <span>Platform</span>
+          <span class="value" id="invPlatform">—</span>
+        </div>
+        <div class="invoice-detail">
           <span>X Profile</span>
           <span class="value" id="invXProfile">—</span>
         </div>
@@ -158,6 +162,7 @@
         }
 
         document.getElementById('invFullName').textContent = data.fullName;
+        document.getElementById('invPlatform').textContent = data.platform || '—';
         document.getElementById('invDiscord').textContent = data.discord || '—';
         document.getElementById('invTelegram').textContent = data.telegram || '—';
         document.getElementById('invXProfile').textContent = data.xProfile || '—';

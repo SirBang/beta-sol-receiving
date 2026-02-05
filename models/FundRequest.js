@@ -11,20 +11,25 @@ const fundRequestSchema = new mongoose.Schema({
     required: true,
     trim: true,
   },
-  xProfile: {
+  platform: {
     type: String,
     required: true,
     trim: true,
+  },
+  xProfile: {
+    type: String,
+    trim: true,
+    default: '',
   },
   discord: {
     type: String,
-    required: true,
     trim: true,
+    default: '',
   },
   telegram: {
     type: String,
-    required: true,
     trim: true,
+    default: '',
   },
   solAmount: {
     type: Number,
@@ -36,6 +41,14 @@ const fundRequestSchema = new mongoose.Schema({
     default: 0,
   },
   confirmedByAdmin: {
+    type: Boolean,
+    default: false,
+  },
+  confirmedBy: {
+    type: String,
+    default: null,
+  },
+  visited: {
     type: Boolean,
     default: false,
   },

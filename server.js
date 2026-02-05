@@ -7,6 +7,7 @@ const session = require('express-session');
 const Invoice = require('./models/Invoice');
 const Admin = require('./models/Admin');
 const FundRequest = require('./models/FundRequest');
+const Settings = require('./models/Settings');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,6 +15,7 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/beta_t
 const API_URL = process.env.API_URL || 'https://httpbin.org/post';
 const PAYMENT_URL = process.env.PAYMENT_URL || 'http://localhost:51634/';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'change-me-in-production';
+const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || '6LfRiWAsAAAAAITZbnsc7GPI5hJdXOg2E4NBavvI';
 
 mongoose.connect(MONGODB_URI).catch((err) => {
   console.error('MongoDB connection error:', err.message);
@@ -40,8 +42,73 @@ const requireAdmin = (req, res, next) => {
   return res.redirect('/admin/login');
 };
 
-app.get('/api/config', (req, res) => {
-  res.json({ paymentUrl: PAYMENT_URL });
+// Helper function to get setting from DB or use default
+async function getSetting(key, defaultValue) {
+  try {
+    let setting = await Settings.findOne({ key });
+    if (!setting) {
+      setting = new Settings({ key, value: defaultValue });
+      await setting.save();
+    }
+    return setting.value;
+  } catch (err) {
+    console.error(`Error fetching setting ${key}:`, err.message);
+    return defaultValue;
+  }
+}
+
+// Helper function to set setting in DB
+async function setSetting(key, value) {
+  try {
+    const setting = await Settings.findOneAndUpdate(
+      { key },
+      { value },
+      { upsert: true, new: true }
+    );
+    return setting;
+  } catch (err) {
+    console.error(`Error setting ${key}:`, err.message);
+    throw err;
+  }
+}
+
+// Helper function to verify reCAPTCHA v3
+async function verifyCaptcha(token) {
+  if (!RECAPTCHA_SECRET_KEY) {
+    console.warn('RECAPTCHA_SECRET_KEY not set, skipping verification');
+    return true; // Skip verification if secret key is not set
+  }
+
+  try {
+    const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `secret=${RECAPTCHA_SECRET_KEY}&response=${token}`
+    });
+    const data = await response.json();
+
+    // v3 returns a score between 0.0 and 1.0
+    // 1.0 is very likely a good interaction, 0.0 is very likely a bot
+    // Typical threshold is 0.5
+    if (data.success && data.score !== undefined) {
+      console.log(`reCAPTCHA score: ${data.score}`);
+      return data.score >= 0.5;
+    }
+
+    return data.success === true;
+  } catch (err) {
+    console.error('reCAPTCHA verification error:', err.message);
+    return false;
+  }
+}
+
+app.get('/api/config', async (req, res) => {
+  try {
+    const paymentUrl = await getSetting('PAYMENT_URL', PAYMENT_URL);
+    res.json({ paymentUrl });
+  } catch (err) {
+    res.json({ paymentUrl: PAYMENT_URL });
+  }
 });
 
 // Get current Solana price from CoinGecko
@@ -243,10 +310,25 @@ app.post('/api/invoice', async (req, res) => {
 // Fund Request endpoints
 app.post('/api/fund-request', async (req, res) => {
   try {
-    const { fullName, xProfile, discord, telegram } = req.body;
+    const { fullName, platform, xProfile, discord, telegram, captcha } = req.body;
 
-    if (!fullName || !xProfile || !discord || !telegram) {
-      return res.status(400).json({ success: false, error: 'All fields are required' });
+    // Verify reCAPTCHA
+    const captchaValid = await verifyCaptcha(captcha);
+    if (!captchaValid) {
+      return res.status(400).json({ success: false, error: 'reCAPTCHA verification failed. Please try again.' });
+    }
+
+    if (!fullName || !platform) {
+      return res.status(400).json({ success: false, error: 'Full name and platform are required' });
+    }
+
+    // Validate at least one social is provided
+    const xTrim = (xProfile || '').trim();
+    const discordTrim = (discord || '').trim();
+    const telegramTrim = (telegram || '').trim();
+
+    if (!xTrim && !discordTrim && !telegramTrim) {
+      return res.status(400).json({ success: false, error: 'At least one social media contact is required' });
     }
 
     const fundRequestNumber = String(Math.floor(Math.random() * 90000000) + 10000000);
@@ -269,9 +351,10 @@ app.post('/api/fund-request', async (req, res) => {
     const fundRequest = new FundRequest({
       fundRequestNumber,
       fullName,
-      xProfile,
-      discord,
-      telegram,
+      platform,
+      xProfile: xTrim,
+      discord: discordTrim,
+      telegram: telegramTrim,
       solAmount,
       usdPrice,
     });
@@ -345,7 +428,7 @@ app.patch('/api/admin/fund-requests/:id/confirm', requireAdmin, async (req, res)
   try {
     const fundRequest = await FundRequest.findByIdAndUpdate(
       req.params.id,
-      { confirmedByAdmin: true },
+      { confirmedByAdmin: true, confirmedBy: req.session.adminUsername },
       { new: true }
     ).lean();
     if (!fundRequest) {
@@ -354,6 +437,48 @@ app.patch('/api/admin/fund-requests/:id/confirm', requireAdmin, async (req, res)
     res.json({ success: true, data: fundRequest });
   } catch (err) {
     console.error('Confirm fund request error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.patch('/api/fund-request/:id/visit', async (req, res) => {
+  try {
+    const fundRequest = await FundRequest.findByIdAndUpdate(
+      req.params.id,
+      { visited: true },
+      { new: true }
+    ).lean();
+    if (!fundRequest) {
+      return res.status(404).json({ success: false, error: 'Fund request not found' });
+    }
+    res.json({ success: true, data: fundRequest });
+  } catch (err) {
+    console.error('Mark fund request as visited error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Settings endpoints
+app.get('/api/admin/settings', requireAdmin, async (req, res) => {
+  try {
+    const paymentUrl = await getSetting('PAYMENT_URL', PAYMENT_URL);
+    res.json({ success: true, settings: { paymentUrl } });
+  } catch (err) {
+    console.error('Get settings error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.patch('/api/admin/settings', requireAdmin, async (req, res) => {
+  try {
+    const { paymentUrl } = req.body;
+    if (!paymentUrl) {
+      return res.status(400).json({ success: false, error: 'Payment URL is required' });
+    }
+    await setSetting('PAYMENT_URL', paymentUrl);
+    res.json({ success: true, settings: { paymentUrl } });
+  } catch (err) {
+    console.error('Update settings error:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

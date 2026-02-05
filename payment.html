@@ -83,6 +83,10 @@
           <span>Full Name</span>
           <span class="value" id="invFullName">—</span>
         </div>
+        <div class="invoice-detail" id="platformRow" style="display:none">
+          <span>Platform</span>
+          <span class="value" id="invPlatform">—</span>
+        </div>
         <div class="invoice-detail">
           <span>X Profile</span>
           <span class="value" id="invXProfile">—</span>
@@ -152,6 +156,11 @@
         if (fundRequestNum) {
           document.getElementById('numberLabel').textContent = 'Fund Request #';
           document.getElementById('invNumber').textContent = data.fundRequestNumber;
+          // Show platform field for fund requests
+          if (data.platform) {
+            document.getElementById('platformRow').style.display = '';
+            document.getElementById('invPlatform').textContent = data.platform;
+          }
         } else {
           document.getElementById('numberLabel').textContent = 'Invoice #';
           document.getElementById('invNumber').textContent = data.invoiceNumber;

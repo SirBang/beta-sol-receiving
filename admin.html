@@ -34,13 +34,29 @@
         radial-gradient(ellipse 60% 40% at 100% 100%, rgba(63, 185, 80, 0.06), transparent);
     }
 
-    .container { max-width: 900px; margin: 0 auto; }
+    .container { max-width: 1600px; margin: 0 auto; }
 
     header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 2rem;
+    }
+
+    .admin-layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 2rem;
+      align-items: start;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 2rem;
+    }
+
+    .main-content {
+      min-width: 0;
     }
 
     h1 { font-size: 1.5rem; font-weight: 600; }
@@ -63,12 +79,19 @@
 
     .invoice-row {
       display: grid;
-      grid-template-columns: 100px 1fr 1fr 80px 80px 100px 110px 120px;
       gap: 1rem;
       align-items: center;
       padding: 1rem 1.25rem;
       border-bottom: 1px solid var(--border);
       font-size: 0.9rem;
+    }
+
+    .invoice-row.fund-request-row {
+      grid-template-columns: 100px 1fr 100px 1fr 80px 80px 110px 80px 120px;
+    }
+
+    .invoice-row.invoice-request-row {
+      grid-template-columns: 100px 1fr 1fr 80px 80px 100px 110px 120px;
     }
 
     .invoice-row:last-child { border-bottom: none; }
@@ -118,6 +141,62 @@
       text-align: center;
       color: var(--text-muted);
     }
+
+    .settings-form {
+      padding: 1.5rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 0.7rem 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+    }
+
+    .btn-save {
+      background: var(--accent);
+      color: var(--bg);
+      padding: 0.7rem 1.5rem;
+      font-size: 0.9rem;
+    }
+
+    .success-msg {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      background: rgba(63, 185, 80, 0.15);
+      border: 1px solid rgba(63, 185, 80, 0.4);
+      border-radius: 6px;
+      color: var(--success);
+      font-size: 0.9rem;
+      display: none;
+    }
+
+    .success-msg.visible {
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -130,38 +209,40 @@
       </div>
     </header>
 
-    <h2 style="font-size: 1.2rem; margin-bottom: 1rem; color: var(--text-muted);">Fund Requests</h2>
-    <div class="card">
-      <div class="invoice-row header">
-        <div>Fund Request #</div>
-        <div>Full Name</div>
-        <div>X Profile</div>
-        <div>Discord</div>
-        <div>Telegram</div>
-        <div>SOL</div>
-        <div>Created</div>
-        <div>Status</div>
-      </div>
-      <div id="rewardList">
-        <div class="loading" id="loadingRewards">Loading fund requests…</div>
-      </div>
-    </div>
+    <div class="admin-layout">
+      <aside class="sidebar">
+        <h2 style="font-size: 1.2rem; margin-bottom: 1rem; color: var(--text-muted);">Settings</h2>
+        <div class="card">
+          <div class="settings-form">
+            <div class="form-group">
+              <label for="paymentUrl">Payment URL</label>
+              <input type="url" id="paymentUrl" placeholder="http://localhost:51634/" required>
+            </div>
+            <button class="btn btn-save" id="saveSettingsBtn">Save Settings</button>
+            <div class="success-msg" id="settingsSuccessMsg">Settings saved successfully!</div>
+          </div>
+        </div>
+      </aside>
 
-    <h2 style="font-size: 1.2rem; margin: 2rem 0 1rem; color: var(--text-muted);">Invoice Requests</h2>
-    <div class="card">
-      <div class="invoice-row header">
-        <div>Invoice #</div>
-        <div>Nickname</div>
-        <div>Full Name</div>
-        <div>Bugs</div>
-        <div>Hours</div>
-        <div>Amount</div>
-        <div>Created</div>
-        <div>Status</div>
-      </div>
-      <div id="invoiceList">
-        <div class="loading" id="loadingInvoices">Loading invoices…</div>
-      </div>
+      <main class="main-content">
+        <h2 style="font-size: 1.2rem; margin-bottom: 1rem; color: var(--text-muted);">Fund Requests</h2>
+        <div class="card">
+          <div class="invoice-row fund-request-row header">
+            <div>Fund Request #</div>
+            <div>Full Name</div>
+            <div>Platform</div>
+            <div>X Profile</div>
+            <div>Discord</div>
+            <div>Telegram</div>
+            <div>Created</div>
+            <div>Visited</div>
+            <div>Status</div>
+          </div>
+          <div id="rewardList">
+            <div class="loading" id="loadingRewards">Loading fund requests…</div>
+          </div>
+        </div>
+      </main>
     </div>
   </div>
 
@@ -189,18 +270,25 @@
           const { text: created, recent } = formatCreated(fundRequest.createdAt);
           const createdClass = recent ? ' created-time recent' : ' created-time';
           const confirmed = fundRequest.confirmedByAdmin;
+          const visited = fundRequest.visited;
           return `
-            <div class="invoice-row" data-id="${fundRequest._id}" data-type="fundRequest">
+            <div class="invoice-row fund-request-row" data-id="${fundRequest._id}" data-type="fundRequest">
               <div>${escapeHtml(fundRequest.fundRequestNumber || '—')}</div>
               <div>${escapeHtml(fundRequest.fullName)}</div>
+              <div>${escapeHtml(fundRequest.platform || '—')}</div>
               <div>${escapeHtml(fundRequest.xProfile || '—')}</div>
               <div>${escapeHtml(fundRequest.discord || '—')}</div>
               <div>${escapeHtml(fundRequest.telegram || '—')}</div>
-              <div class="amount" onclick="copyAmount('${fundRequest.solAmount}')" title="Click to copy">${fundRequest.solAmount} SOL</div>
               <div class="${createdClass.trim()}" data-created="${fundRequest.createdAt}">${created}</div>
               <div>
+                ${visited
+                  ? '<span class="status confirmed">✓</span>'
+                  : '<span class="status pending">—</span>'
+                }
+              </div>
+              <div>
                 ${confirmed
-                  ? '<span class="status confirmed">Confirmed</span>'
+                  ? `<span class="status confirmed">Confirmed${fundRequest.confirmedBy ? ' by ' + escapeHtml(fundRequest.confirmedBy) : ''}</span>`
                   : `<button class="btn btn-confirm" onclick="confirmFundRequest('${fundRequest._id}', this)">Confirm</button>`
                 }
               </div>
@@ -237,7 +325,7 @@
           const createdClass = recent ? ' created-time recent' : ' created-time';
           const confirmed = inv.confirmedByAdmin;
           return `
-            <div class="invoice-row" data-id="${inv._id}" data-type="invoice">
+            <div class="invoice-row invoice-request-row" data-id="${inv._id}" data-type="invoice">
               <div>${escapeHtml(inv.invoiceNumber || '—')}</div>
               <div>${escapeHtml(inv.nickname)}</div>
               <div>${escapeHtml(inv.fullName)}</div>
@@ -263,8 +351,60 @@
       }
     }
 
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/admin/settings', { credentials: 'include' });
+        if (res.status === 401) { location.href = '/admin/login'; return; }
+        const { settings } = await res.json();
+        if (settings && settings.paymentUrl) {
+          document.getElementById('paymentUrl').value = settings.paymentUrl;
+        }
+      } catch (err) {
+        console.error('Failed to load settings:', err);
+      }
+    }
+
+    async function saveSettings() {
+      const btn = document.getElementById('saveSettingsBtn');
+      const successMsg = document.getElementById('settingsSuccessMsg');
+      const paymentUrl = document.getElementById('paymentUrl').value;
+
+      if (!paymentUrl) {
+        alert('Payment URL is required');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      successMsg.classList.remove('visible');
+
+      try {
+        const res = await fetch('/api/admin/settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ paymentUrl })
+        });
+
+        if (res.status === 401) { location.href = '/admin/login'; return; }
+
+        const data = await res.json();
+        if (data.success) {
+          successMsg.classList.add('visible');
+          setTimeout(() => successMsg.classList.remove('visible'), 3000);
+        } else {
+          alert('Failed to save settings: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Failed to save settings: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Settings';
+      }
+    }
+
     async function loadAll() {
-      await Promise.all([loadRewards(), loadInvoices()]);
+      await Promise.all([loadRewards(), loadInvoices(), loadSettings()]);
       startTimeRefresh();
       startPolling();
     }
@@ -327,10 +467,9 @@
         const res = await fetch(`/api/admin/fund-requests/${id}/confirm`, { method: 'PATCH', credentials: 'include' });
         const json = await res.json();
         if (json.success) {
-          copyAmount(String(json.data.solAmount));
           const row = document.querySelector(`[data-id="${id}"][data-type="fundRequest"]`);
-          const statusCell = row && row.querySelector('div:nth-child(8)');
-          if (statusCell) statusCell.innerHTML = '<span class="status confirmed">Confirmed</span>';
+          const statusCell = row && row.querySelector('div:nth-child(9)');
+          if (statusCell) statusCell.innerHTML = `<span class="status confirmed">Confirmed${json.data.confirmedBy ? ' by ' + escapeHtml(json.data.confirmedBy) : ''}</span>`;
         } else {
           btn.disabled = false;
           btn.textContent = 'Confirm';
@@ -361,6 +500,8 @@
         btn.textContent = 'Confirm';
       }
     }
+
+    document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
 
     loadAll();
   </script>
